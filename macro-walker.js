@@ -13,6 +13,7 @@ export class MacroWalker {
     this.min = min; this.max = max; this.stepPct = stepPct;
     this.value = (min + max) / 2;
     this._resolved = null;                    // { trackId, deviceId, paramId }
+    this._held = false;                       // true while setTarget() is pinning it
   }
 
   async resolve() {
@@ -35,15 +36,29 @@ export class MacroWalker {
   // Bounded random walk — reflects off min/max rather than clamping+sticking,
   // so it keeps drifting instead of parking at an edge.
   step() {
-    if (!this._resolved) return;
+    if (!this._resolved || this._held) return;
     const range = this.max - this.min;
     let next = this.value + (Math.random() * 2 - 1) * range * this.stepPct;
     if (next < this.min) next = this.min + (this.min - next);
     if (next > this.max) next = this.max - (next - this.max);
     this.value = Math.max(this.min, Math.min(this.max, next));
+    this._send();
+  }
+
+  // Manual override: pin the macro and stop walking it. Unlike overwriting
+  // step(), this actually transmits the value and can be undone — release()
+  // hands the parameter back to the walk from wherever you left it.
+  setTarget(value) {
+    this.value = Math.max(this.min, Math.min(this.max, value));
+    this._held = true;
+    this._send();
+  }
+
+  release() { this._held = false; }
+
+  _send() {
+    if (!this._resolved) return;
     const { trackId, deviceId, paramId } = this._resolved;
     this.bridge.send('/live/device/set/parameter/value', trackId, deviceId, paramId, this.value);
   }
-
-  setTarget(value) { this.value = Math.max(this.min, Math.min(this.max, value)); this.step = () => {}; } // manual override escape hatch
 }

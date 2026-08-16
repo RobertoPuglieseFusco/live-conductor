@@ -30,6 +30,7 @@ export class SenderMatrix {
     this.autoEnable = autoEnable;
     this._gainParams = new Map();   // "track>label" -> { trackId, deviceId, paramId, min, max, enableId, enabled }
     this._warned = new Set();
+    this.minDbFloor = -69;   // anything at/below the floor reads as silence
   }
 
   async resolve() {
@@ -84,6 +85,18 @@ export class SenderMatrix {
     const db = w === 0 ? p.min : this.maxDb + 20 * this.curve * Math.log10(w);
     const value = Math.max(p.min, Math.min(p.max, db));
     this.bridge.send('/live/device/set/parameter/value', p.trackId, p.deviceId, p.paramId, value);
+  }
+
+  // Every resolved route, for drivers that need to read or restore raw state.
+  entries() {
+    return [...this._gainParams].map(([key, p]) => ({ key, ...p }));
+  }
+
+  // Inverse of setWeight's curve. Lets a driver start walking from wherever the
+  // set already sits instead of yanking every gain to an arbitrary opening value.
+  dbToWeight(db) {
+    if (db <= this.minDbFloor) return 0;
+    return Math.max(0, Math.min(1, 10 ** ((db - this.maxDb) / (20 * this.curve))));
   }
 }
 

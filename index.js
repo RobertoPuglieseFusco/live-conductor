@@ -42,4 +42,9 @@ console.log(`Transport locked — ${transport.numerator}/4, following Live's clo
 transport.onBar(8, () => { const s = scenes.step(); console.log(`bar ${transport.beat / transport.numerator} → scene ${s}`); });
 transport.onBar(1, () => macros.forEach(m => m.step()));
 
-process.on('SIGINT', () => { bridge.send('/live/song/stop_playing'); process.exit(0); });
+// send() only queues the UDP write — exiting in the same tick means the packet
+// never leaves and Live keeps playing after Ctrl-C.
+process.on('SIGINT', () => {
+  bridge.send('/live/song/stop_playing');
+  setTimeout(() => process.exit(0), 150);
+});

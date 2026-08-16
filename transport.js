@@ -12,6 +12,7 @@ export class Transport {
     this.numerator = 4;
     this._barCbs = new Map();   // everyNBars -> Set<fn>
     this._beatCbs = new Set();
+    this._lastBar = -1;
   }
 
   async start() {
@@ -19,8 +20,13 @@ export class Transport {
     this.bridge.listen('/live/song/get/beat', (beat) => {
       this.beat = beat;
       this._beatCbs.forEach(fn => fn(beat));
-      if (beat % this.numerator === 0) {
-        const bar = Math.floor(beat / this.numerator);
+      // Fire on the bar CHANGING rather than on beat % numerator === 0. UDP
+      // drops packets and the playhead can be moved by hand, so testing for an
+      // exact beat hit silently skips whole bars; comparing against the last
+      // bar we saw survives both.
+      const bar = Math.floor(beat / this.numerator);
+      if (bar !== this._lastBar) {
+        this._lastBar = bar;
         this._barCbs.forEach((fns, everyN) => { if (bar % everyN === 0) fns.forEach(fn => fn(bar)); });
       }
     });

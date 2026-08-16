@@ -5,7 +5,9 @@
   "description": "External OSC brain for Ableton Live, via AbletonOSC",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "conduct": "node conductor.js",
+    "dry": "node conductor.js --dry"
   },
   "dependencies": {
     "osc": "^2.4.5"
