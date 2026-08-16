@@ -55,9 +55,11 @@ for (const t of map.tracks) {
     let note = '';
 
     if (VERIFY) {
-      // mesh-matrix maps row R (1-based) to track index R - ROW_OFFSET. Audio
-      // output index is 0-based, so row R corresponds to io = R - 1.
-      const expectedId = io + 1 - ROW_OFFSET;
+      // Confirmed against Live: audio output index IS the row number (out 0 is
+      // the device's own output, outs 1..8 are the eight send rows), and
+      // mesh-matrix maps row R to track index R - ROW_OFFSET.
+      if (io === 0) { console.log(`   out 0  ->  "${dest}"${ch}  (device output, not a send row)`); continue; }
+      const expectedId = io - ROW_OFFSET;
       const expected = map.tracks[expectedId]?.name;
       if (expected && dest !== '?' ) {
         const ok = dest === expected;

@@ -115,6 +115,43 @@ Both apply *after* the walk, so drift stays free and the constraints only bite
 when violated. Over 2000 simulated bars neither limit is ever exceeded and the
 weights keep moving rather than collapsing to a corner.
 
+### The destinations are reachable after all
+
+An `Audio Sends` destination isn't an automatable parameter, so it never shows
+up in `/live/device/get/parameters` — which looks like it can be neither read
+nor set. Reading the device's own patcher shows that's wrong. `Audio Sends.amxd`
+isn't frozen; its 8 rows are `bpatcher`s whose routing sub-patch drives:
+
+    live.observer available_routing_channels
+    RoutingObjects2 available_routing_types routing_type
+
+Those are **DeviceIO** properties — `device.audio_outputs[n].routing_type`, in
+the Live API since 10.1. The `umenu` is only a view of a Live API property. The
+gap was on the AbletonOSC side: no DeviceIO support, no generic LOM accessor.
+
+`abletonosc-patch/patch-abletonosc.py` adds the missing handlers (backs up
+`device.py`, idempotent, `--revert` to undo). Live must be restarted afterwards.
+Then:
+
+    node probe-routing.js --verify
+
+Confirmed against Live 12.4: each device reports **9 audio outputs** — out 0 is
+the device's own output, outs 1–8 are the eight send rows. So the audio output
+index *is* the row number, and row *R* routes to track *R−1*, exactly the
+`row = track index + 1` that `mesh-matrix.js` assumes. Destinations are settable
+too, by display name:
+
+```
+/live/device/set/audio_output_routing_type   track, device, io, "FX_2"
+```
+
+available: `Ext. Out | Cello | FX_1 | FX_2 | FX_3 | A-Reverb | B-Delay | No Output`
+
+This settles the one row meter probing structurally cannot check — a track can't
+hear itself arrive, so `row01 → Cello` was previously an inference. It's now
+read directly. `verify-mesh.js` remains useful as a fallback when the patch
+isn't installed, but it's no longer the only way.
+
 ### When a destination menu gets rewired
 
 An `Audio Sends` destination dropdown is **not** an automatable parameter, so it
