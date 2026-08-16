@@ -16,7 +16,23 @@ export class LiveBridge {
     this.port.on('error', err => console.error('[osc]', err.message));
   }
 
-  async open() { this.port.open(); await this.ready; return this; }
+  // AbletonOSC replies to a fixed port (11001), so only one client can be
+  // listening at a time — a second process just hangs waiting for a 'ready'
+  // that never comes. Fail loudly instead, and give callers a way to hand the
+  // port back.
+  async open(timeoutMs = 3000) {
+    this.port.open();
+    await Promise.race([
+      this.ready,
+      new Promise((_, rej) => setTimeout(() => rej(new Error(
+        `OSC port ${this.port.options.localPort} did not open — is another ` +
+        `conductor already running? Only one client can hold the reply port.`
+      )), timeoutMs)),
+    ]);
+    return this;
+  }
+
+  close() { try { this.port.close(); } catch {} }
 
   send(address, ...args) {
     this.port.send({ address, args: args.map(toArg) });

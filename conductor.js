@@ -71,8 +71,10 @@ console.log(`\nTransport locked — ${transport.numerator}/4, following Live's c
 console.log('Press play in Live. Ctrl-C restores every gain to where it started.\n');
 
 let beats = 0;
+let stopping = false;   // set by SIGINT; see the note on the handler below
 transport.onBeat(() => beats++);
 transport.onBar(EVERY_N, (bar) => {
+  if (stopping) return;
   drift();
   const shown = [...weights].map(([k, w]) => `${k}=${w.toFixed(2)}`).join('  ');
   console.log(`bar ${String(bar).padStart(4)}  ${shown}`);
@@ -84,7 +86,14 @@ setTimeout(() => {
   if (beats === 0) console.warn('[transport] no beats yet — is Live playing? (this is not an error)');
 }, 4000);
 
+// Restoring is not instant: the UDP writes need a tick to flush, and Live's
+// beat events keep arriving the whole time. Without the `stopping` guard a bar
+// boundary landing inside that window re-drifts every gain AFTER the restore
+// was sent, and the process exits leaving the set wrong — roughly a 1-in-10
+// shot at 90bpm, which is exactly the kind of bug you'd blame on Ableton.
 process.on('SIGINT', () => {
+  if (stopping) return;
+  stopping = true;
   console.log('\nrestoring original gains...');
   for (const e of entries) {
     bridge.send('/live/device/set/parameter/value', e.trackId, e.deviceId, e.paramId, original.get(e.key));

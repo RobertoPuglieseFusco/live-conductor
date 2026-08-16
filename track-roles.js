@@ -19,23 +19,34 @@
 // script using it. The conductor treats `fx` and `bus` as send destinations,
 // `source` as things that generate audio, and skips `ignore` entirely.
 export const DEFAULT_RULES = [
-  { role: 'fx',     match: /^(fx|efx|effect|effects)\b/i },
-  { role: 'bus',    match: /^(bus|sum|group|gr)\b/i },
-  { role: 'source', match: /^(src|source|in|input)\b/i },
-  { role: 'ignore', match: /^(ref|reference|ignore|mute|x)\b/i },
+  { role: 'fx',     keywords: ['fx', 'efx', 'effect', 'effects'] },
+  { role: 'bus',    keywords: ['bus', 'sum', 'group', 'gr'] },
+  { role: 'source', keywords: ['src', 'source', 'in', 'input'] },
+  { role: 'ignore', keywords: ['ref', 'reference', 'ignore', 'mute', 'x'] },
 ];
 
 const ORDINAL = /^\s*\d+\s*[-–—.:_)]?\s*/;   // "1-", "02 ", "3.", "4) "
+const SEP     = /^[\s._\-:>|]+/;               // whatever sits between role and label
+
+// A word boundary is the obvious thing to use here and it's wrong: \b doesn't
+// break between "FX" and "_1", because underscore is a word character — so
+// "FX_1" would read as a source. Match the keyword followed by end-of-name, a
+// separator, or a digit instead, which is how people actually name tracks
+// (FX_1, FX-2, FX 3, FX4 all mean the same thing).
+function keywordMatcher(keywords) {
+  return new RegExp(`^(${keywords.join('|')})(?=$|[\\s._\\-:>|]|\\d)`, 'i');
+}
 
 // Pure — worth having separate so you can unit-test the convention without Live.
 export function parseTrackName(name, rules = DEFAULT_RULES, defaultRole = 'source') {
   const bare = String(name).replace(ORDINAL, '');
-  for (const { role, match } of rules) {
-    const m = bare.match(match);
-    if (m) {
-      const label = bare.slice(m[0].length).trim();
-      return { role, label: label || m[1].toLowerCase(), matched: true };
-    }
+  for (const rule of rules) {
+    // `match` lets a caller supply a raw regex; `keywords` is the friendly form.
+    const re = rule.match ?? keywordMatcher(rule.keywords);
+    const m = bare.match(re);
+    if (!m) continue;
+    const label = bare.slice(m[0].length).replace(SEP, '').trim();
+    return { role: rule.role, label: label || m[1].toLowerCase(), matched: true };
   }
   return { role: defaultRole, label: bare.trim() || String(name), matched: false };
 }
