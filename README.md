@@ -129,8 +129,11 @@ Those are **DeviceIO** properties — `device.audio_outputs[n].routing_type`, in
 the Live API since 10.1. The `umenu` is only a view of a Live API property. The
 gap was on the AbletonOSC side: no DeviceIO support, no generic LOM accessor.
 
-`abletonosc-patch/patch-abletonosc.py` adds the missing handlers (backs up
-`device.py`, idempotent, `--revert` to undo). Live must be restarted afterwards.
+`vendor/AbletonOSC/` is a full patched copy (MIT, upstream unchanged apart from
+one addition — see `vendor/AbletonOSC/MODIFICATIONS.md`), and
+`abletonosc-patch/patch-abletonosc.py` applies just that change to an existing
+install (backs up `device.py`, idempotent, `--revert` to undo). Either way Live
+must be restarted afterwards.
 Then:
 
     node probe-routing.js --verify

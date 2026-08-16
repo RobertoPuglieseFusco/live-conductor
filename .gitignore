@@ -9,3 +9,5 @@ npm-debug.log*
 *.amxd
 # Ableton project folders
 *Project/
+__pycache__/
+*.pyc
