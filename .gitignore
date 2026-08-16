@@ -7,7 +7,9 @@ npm-debug.log*
 
 # Cycling '74's device — kept locally for reference, not ours to redistribute
 *.amxd
-# Ableton project folders
-*Project/
+# Ableton auto-backups and macOS cruft. The .als set itself IS versioned —
+# it's the set the conductor targets, so the repo describes itself.
+*Project/Backup/
+Icon?
 __pycache__/
 *.pyc
