@@ -66,6 +66,35 @@ to a disabled row does nothing audible. `resolve()` reads those flags and
 `setWeight` warns once per route if you drive a disabled one — pass
 `{ autoEnable: true }` to have it flip the flag for you instead of warning.
 
+## The mesh (what the matrix actually is)
+
+If every track's `Audio Sends` is wired to every track, the routing is a plain
+N×N matrix and the *gain* decides who hears whom. Where a row points isn't
+readable over OSC, so it was derived by opening one row at a time and watching
+`/live/track/get/output_meter_level`:
+
+    row02 -> track 1    row03 -> track 2    row04 -> track 3
+    => row = destination track index + 1
+
+Probed from two different source tracks with identical results, so the wiring is
+uniform and the arithmetic holds. `mesh-matrix.js` builds on that, letting you
+address routes by name instead of by row number:
+
+```js
+const map  = new TrackMap(bridge);   await map.resolve();
+const mesh = new MeshMatrix(bridge, map); await mesh.resolve();
+
+mesh.setWeight('Cello', 'FX_1', 0.7);
+console.log(mesh.render(weights));   // an N×N grid: rows send, columns receive
+```
+
+Self-routes are excluded unless you pass `{ includeSelf: true }` — a track
+sending to itself is a feedback loop, which is worth opting into deliberately
+rather than getting by default. If you rewire the dropdowns, change `rowOffset`
+and nothing else moves.
+
+`node conductor.js --dry` prints the resolved mesh and changes nothing.
+
 Run `inspect-device.js` on a track with `Audio Sends` loaded before trusting
 any of this — it'll show the real parameter names and ranges, which
 `resolve()` needs to match.

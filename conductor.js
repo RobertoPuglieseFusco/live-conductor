@@ -1,67 +1,65 @@
 // ── CONDUCTOR ─────────────────────────────────────────────────────────────────
 // The matrix version of index.js: instead of walking Rack macros on a named
-// "cello" track, this discovers the set's own routing and drifts it on Live's
-// beat clock. Nothing is hardcoded — roles come from track names
-// (see track-roles.js) and live routes come from which Audio Sends rows you
-// actually enabled, so it runs against any set built that way.
+// "cello" track, this reads the set's own shape and drifts the routing between
+// tracks on Live's beat clock. Nothing is hardcoded — roles come from track
+// names (track-roles.js) and the send matrix is derived arithmetically
+// (mesh-matrix.js) — so it runs against any set built the same way.
 //
-//   node conductor.js            walk the discovered routes
-//   node conductor.js --dry      resolve, print the map, change nothing
-import { LiveBridge }              from './osc-bridge.js';
-import { Transport }               from './transport.js';
-import { SenderMatrix }            from './sender-matrix.js';
-import { TrackMap, discoverRoutes} from './track-roles.js';
+//   node conductor.js            walk the mesh
+//   node conductor.js --dry      resolve, print the matrix, change nothing
+import { LiveBridge } from './osc-bridge.js';
+import { Transport }  from './transport.js';
+import { TrackMap }   from './track-roles.js';
+import { MeshMatrix } from './mesh-matrix.js';
 
-const DRY      = process.argv.includes('--dry');
-const STEP_PCT = 0.12;   // how far a route's weight can move in one bar
-const EVERY_N  = 1;      // bars between steps
+const DRY     = process.argv.includes('--dry');
+const EVERY_N = 1;    // bars between steps
+
+// Roles earn their keep here: how far a route is allowed to move in one bar
+// depends on what it connects. Feeding an effect is where the interest is, so
+// it moves most; effect-into-effect is the runaway-feedback direction, so it
+// creeps. Retune freely — this is the musical decision, not an implementation
+// detail.
+const STEP = { 'source>fx': 0.12, 'source>bus': 0.10, 'fx>fx': 0.04, default: 0.06 };
+const stepFor = (fromRole, toRole) => STEP[`${fromRole}>${toRole}`] ?? STEP.default;
 
 const bridge = await new LiveBridge().open();
 const [maj, min] = await bridge.request('/live/application/get/version', [], '/live/application/get/version', 5000)
   .catch(() => { console.error('No reply from AbletonOSC. Is Live open with AbletonOSC as the Control Surface?'); process.exit(1); });
 console.log(`Live ${maj}.${min}`);
 
-// ── what's in the set ────────────────────────────────────────────────────────
 const map = new TrackMap(bridge);
 await map.resolve();
 console.log(`\nTracks:\n${map.describe()}`);
 
-const routes = await discoverRoutes(bridge, map);
-if (!Object.keys(routes).length) {
-  console.error('\nNo enabled Audio Sends rows found — nothing to drive.');
-  console.error('Enable at least one row in an Audio Sends device, then re-run.');
-  process.exit(1);
-}
+const mesh = new MeshMatrix(bridge, map);
+await mesh.resolve();
+const pairs = mesh.pairs();
+if (!pairs.length) { console.error('\nNo send routes resolved — is there an Audio Sends device anywhere?'); process.exit(1); }
 
-const matrix = new SenderMatrix(bridge, routes);
-await matrix.resolve();
-const entries = matrix.entries();
-console.log(`\nRoutes (${entries.length}):`);
-for (const e of entries) console.log(`  ${e.key}  ->  param ${e.paramId}  [${e.min}..${e.max}] dB`);
+const roleOf = Object.fromEntries(map.tracks.map(t => [t.name, t.role]));
 
-// ── remember where the set started, so Ctrl-C puts it back ───────────────────
+// Read where the set already sits, so bar 1 continues the mix instead of
+// overriding it — and so Ctrl-C can put every gain back exactly.
 const original = new Map();
-for (const e of entries) {
-  const db = (await bridge.request('/live/device/get/parameter/value', [e.trackId, e.deviceId, e.paramId]))[3];
-  original.set(e.key, db);
+for (const p of pairs) {
+  original.set(p.key, (await bridge.request('/live/device/get/parameter/value', [p.trackId, p.deviceId, p.paramId]))[3]);
 }
+const weights = new Map(pairs.map(p => [p.key, mesh.dbToWeight(original.get(p.key))]));
+
+console.log(`\nMesh (${pairs.length} routes), current weights:\n`);
+console.log(mesh.render(weights));
 
 if (DRY) { console.log('\n--dry: resolved only, nothing changed.'); process.exit(0); }
 
-// ── the walk ─────────────────────────────────────────────────────────────────
-// Each route gets its own bounded random walk, reflecting off 0 and 1 so it
-// keeps drifting instead of parking at an edge. Starting weight is read back
-// from the set, so bar 1 continues from your mix rather than overriding it.
-const weights = new Map(entries.map(e => [e.key, matrix.dbToWeight(original.get(e.key))]));
-
 function drift() {
-  for (const [key, w] of weights) {
-    let next = w + (Math.random() * 2 - 1) * STEP_PCT;
-    if (next < 0) next = -next;
-    if (next > 1) next = 2 - next;
-    weights.set(key, Math.max(0, Math.min(1, next)));
-    const [track, label] = key.split('>');
-    matrix.setWeight(track, label, weights.get(key));
+  for (const p of pairs) {
+    const pct = stepFor(roleOf[p.from], roleOf[p.to]);
+    let next = weights.get(p.key) + (Math.random() * 2 - 1) * pct;
+    if (next < 0) next = -next;            // reflect rather than clamp, so it
+    if (next > 1) next = 2 - next;         // keeps drifting instead of parking
+    weights.set(p.key, Math.max(0, Math.min(1, next)));
+    mesh.setWeight(p.from, p.to, weights.get(p.key));
   }
 }
 
@@ -71,13 +69,12 @@ console.log(`\nTransport locked — ${transport.numerator}/4, following Live's c
 console.log('Press play in Live. Ctrl-C restores every gain to where it started.\n');
 
 let beats = 0;
-let stopping = false;   // set by SIGINT; see the note on the handler below
+let stopping = false;   // see the SIGINT handler
 transport.onBeat(() => beats++);
 transport.onBar(EVERY_N, (bar) => {
   if (stopping) return;
   drift();
-  const shown = [...weights].map(([k, w]) => `${k}=${w.toFixed(2)}`).join('  ');
-  console.log(`bar ${String(bar).padStart(4)}  ${shown}`);
+  console.log(`\nbar ${bar}\n${mesh.render(weights)}`);
 });
 
 // Beat events only arrive while Live is actually playing — without this the
@@ -86,18 +83,17 @@ setTimeout(() => {
   if (beats === 0) console.warn('[transport] no beats yet — is Live playing? (this is not an error)');
 }, 4000);
 
-// Restoring is not instant: the UDP writes need a tick to flush, and Live's
-// beat events keep arriving the whole time. Without the `stopping` guard a bar
-// boundary landing inside that window re-drifts every gain AFTER the restore
-// was sent, and the process exits leaving the set wrong — roughly a 1-in-10
-// shot at 90bpm, which is exactly the kind of bug you'd blame on Ableton.
+// Restoring isn't instant: the UDP writes need a tick to flush, and beat events
+// keep arriving the whole time. Without the `stopping` guard a bar boundary
+// landing inside that window re-drifts every gain AFTER the restore was sent,
+// and the process exits leaving the set wrong — roughly 1 in 10 at 90bpm, and
+// it would look like Ableton's fault.
 process.on('SIGINT', () => {
   if (stopping) return;
   stopping = true;
   console.log('\nrestoring original gains...');
-  for (const e of entries) {
-    bridge.send('/live/device/set/parameter/value', e.trackId, e.deviceId, e.paramId, original.get(e.key));
+  for (const p of pairs) {
+    bridge.send('/live/device/set/parameter/value', p.trackId, p.deviceId, p.paramId, original.get(p.key));
   }
-  // send() only queues the UDP writes — give them a tick to actually leave.
-  setTimeout(() => { console.log('done.'); process.exit(0); }, 250);
+  setTimeout(() => { bridge.close(); console.log('done.'); process.exit(0); }, 300);
 });
