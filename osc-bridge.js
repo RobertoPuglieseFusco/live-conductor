@@ -8,7 +8,7 @@ import osc from 'osc';
 
 export class LiveBridge {
   constructor({ localPort = 11001, remotePort = 11000, remoteAddress = '127.0.0.1' } = {}) {
-    this.port = new osc.UDPPort({ localAddress: '0.0.0.0', localPort, remoteAddress, remotePort });
+    this.port = new osc.UDPPort({ localAddress: '0.0.0.0', localPort, remoteAddress, remotePort, metadata: true });
     this._listeners = new Map();   // address -> Set<fn>
     this._pending   = new Map();   // address -> [{resolve, timer}, ...]  (FIFO per address)
     this.ready = new Promise(res => this.port.on('ready', res));

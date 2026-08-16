@@ -53,7 +53,10 @@ export class SenderMatrix {
 }
 
 function findGainParam(paramNames, row) {
-  for (const candidate of [`Gain-${row}`, `Gain ${row}`, `Gain${row}`]) {
+  // Audio Sends names its rows zero-padded (Gain-01, Gain-02, ...), so a
+  // numeric row like 3 has to become "03". Unpadded forms kept as fallbacks.
+  const pad = String(row).padStart(2, '0');
+  for (const candidate of [`Gain-${pad}`, `Gain-${row}`, `Gain ${row}`, `Gain${row}`]) {
     const i = paramNames.indexOf(candidate);
     if (i >= 0) return i;
   }
