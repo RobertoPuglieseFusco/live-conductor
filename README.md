@@ -95,6 +95,32 @@ and nothing else moves.
 
 `node conductor.js --dry` prints the resolved mesh and changes nothing.
 
+### When a destination menu gets rewired
+
+An `Audio Sends` destination dropdown is **not** an automatable parameter, so it
+can be neither read nor set over OSC — `device.py` in AbletonOSC exposes only
+parameter get/set. Rewire one by hand and the conductor will keep sending audio
+to the wrong track with no error anywhere.
+
+`verify-mesh.js` re-derives the truth the only way available — opening one row
+at a time and watching output meters — and tells you which row lies:
+
+    npm run verify                  probe whichever track is making sound
+    node verify-mesh.js --from FX_1 probe a specific track
+
+Exit 0 means the mapping holds, 1 means a row is mis-wired, 2 means it couldn't
+test (no audio). It snapshots every gain, enable and track volume and restores
+them on exit, including on Ctrl-C. It's audible and takes a minute, so run it
+after rewiring rather than on every startup.
+
+Note it can't verify a source's own return row — a track can't hear itself
+arrive — so probe from a second track to cover that one.
+
+Native *track* routing is a different story and fully settable:
+`/live/track/set/output_routing_type` matches on display name, and Live
+enumerates the other tracks as options. That's one destination per track, so it
+complements the mesh rather than replacing it.
+
 Run `inspect-device.js` on a track with `Audio Sends` loaded before trusting
 any of this — it'll show the real parameter names and ranges, which
 `resolve()` needs to match.

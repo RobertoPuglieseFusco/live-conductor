@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node index.js",
     "conduct": "node conductor.js",
-    "dry": "node conductor.js --dry"
+    "dry": "node conductor.js --dry",
+    "verify": "node verify-mesh.js"
   },
   "dependencies": {
     "osc": "^2.4.5"
