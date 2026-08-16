@@ -95,6 +95,26 @@ and nothing else moves.
 
 `node conductor.js --dry` prints the resolved mesh and changes nothing.
 
+### Weights, and why a mesh needs rules
+
+You wire the destinations; `weight-field.js` owns the weights. It's pure logic —
+no OSC — so the musical behaviour is testable without a set open.
+
+Two constraints, neither optional once the mesh has cycles:
+
+- **Loop gain.** `Cello → FX_1 → FX_2 → FX_3 → Cello` is a ring. Independent
+  random walks will push every hop toward unity at the same moment, and a cycle
+  whose gains multiply to ≥ 1 doesn't drift, it howls — and the effects on those
+  tracks add gain the send weights know nothing about. Cycles are found by DFS
+  and scaled back to `loopMax` (default 0.6).
+- **Send budget.** A track shouting into every destination at once is mud. Each
+  source's outgoing amplitudes are capped in total, so the walk redistributes
+  emphasis rather than accumulating it.
+
+Both apply *after* the walk, so drift stays free and the constraints only bite
+when violated. Over 2000 simulated bars neither limit is ever exceeded and the
+weights keep moving rather than collapsing to a corner.
+
 ### When a destination menu gets rewired
 
 An `Audio Sends` destination dropdown is **not** an automatable parameter, so it
