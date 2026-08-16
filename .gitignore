@@ -13,3 +13,5 @@ npm-debug.log*
 Icon?
 __pycache__/
 *.pyc
+# recorded audio doesn't belong in git
+*Project/Samples/
