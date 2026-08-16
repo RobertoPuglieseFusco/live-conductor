@@ -55,6 +55,17 @@ await matrix.resolve();
 matrix.setWeight('HRM', 'B', 0.7);
 ```
 
+`setWeight(from, to, w)` takes `w` from 0 to 1: 0 is silence, 1 is unity gain
+(0 dB), and in between `w` is squared into amplitude — so `w = 0.5` lands near
+−12 dB rather than the −35 dB a linear map across the parameter's real
+[−70, +24] dB range would give. Pass `{ maxDb: 24 }` if you actually want to
+reach the device's boost range; the default deliberately won't.
+
+Only rows whose `Enable-NN` flag is on in the device pass audio, so a gain write
+to a disabled row does nothing audible. `resolve()` reads those flags and
+`setWeight` warns once per route if you drive a disabled one — pass
+`{ autoEnable: true }` to have it flip the flag for you instead of warning.
+
 Run `inspect-device.js` on a track with `Audio Sends` loaded before trusting
 any of this — it'll show the real parameter names and ranges, which
 `resolve()` needs to match.
