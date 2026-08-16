@@ -4,3 +4,8 @@ node_modules/
 npm-debug.log*
 .env
 .env.local
+
+# Cycling '74's device — kept locally for reference, not ours to redistribute
+*.amxd
+# Ableton project folders
+*Project/
